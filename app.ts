@@ -14,7 +14,7 @@ dotenv.config();
 const app = express();
 const PORT = config.port;
 
-const allowedOrigins = config.frontendUrl.split(',').map((o) => o.trim()).filter(Boolean);
+const allowedOrigins = config.frontendOrigins;
 const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true); // allow server-to-server and curl
@@ -32,7 +32,7 @@ app.options('*', cors(corsOptions));
 // Stripe webhook needs raw body before JSON parsing
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingController.webhook);
 app.use(express.json());
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(morgan(config.nodeEnv === 'production' ? 'combined' : 'dev'));
 
 // Global rate limiter (configurable via env)
 app.use(createRateLimiter());
@@ -58,7 +58,7 @@ app.use((err: any, req: any, res: any, next: any) => {
 });
 
 // Start Server with graceful shutdown and start background job
-if (process.env.NODE_ENV !== 'test') {
+if (config.nodeEnv !== 'test') {
   const server = app.listen(PORT, () => {
     logger.info(`Server running on http://localhost:${PORT}`);
     logger.info(`AmzPulse Backend v2.0 initialized.`);

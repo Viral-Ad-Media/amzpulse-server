@@ -40,7 +40,11 @@ export const verifyJwt = (token: string, secret: string): JwtPayload | null => {
 
     const data = `${headerB64}.${payloadB64}`;
     const expected = base64url(crypto.createHmac('sha256', secret).update(data).digest());
-    if (expected !== signature) return null;
+    const expectedBuffer = Buffer.from(expected);
+    const signatureBuffer = Buffer.from(signature);
+    if (expectedBuffer.length !== signatureBuffer.length || !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) {
+      return null;
+    }
 
     const payload = JSON.parse(fromBase64Url(payloadB64)) as JwtPayload;
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;

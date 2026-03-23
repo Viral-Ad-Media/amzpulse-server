@@ -156,8 +156,9 @@ export const createCheckoutSession = async (opts: { organizationId: string; user
     mode: 'subscription',
     customer,
     line_items: [{ price: config.stripePricePro, quantity: 1 }],
-    success_url: `${config.frontendUrl}/billing/success`,
-    cancel_url: `${config.frontendUrl}/billing/cancel`,
+    // Hash routes keep static-host deployments working even when clean-path rewrites are unavailable.
+    success_url: `${config.frontendUrl}/#/billing/success`,
+    cancel_url: `${config.frontendUrl}/#/billing/cancel`,
     subscription_data: {
       metadata: { organizationId: opts.organizationId }
     },

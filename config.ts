@@ -25,6 +25,8 @@ export interface AppConfig {
   stripeWebhookSecret?: string;
   stripePricePro?: string;
   frontendUrl: string;
+  frontendUrls: string[];
+  frontendOrigins: string[];
   enableMetricsSync: boolean;
   metrics: {
     cron: string;
@@ -46,6 +48,30 @@ const toNumber = (val: string | undefined, fallback: number) => {
 const toBool = (val: string | undefined, fallback = false) => {
   if (val === undefined) return fallback;
   return ['1', 'true', 'yes', 'on'].includes(val.toLowerCase());
+};
+
+const splitCsv = (value: string | undefined, fallback: string) =>
+  (value || fallback)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+const normalizeUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    const path = url.pathname.replace(/\/$/, '');
+    return `${url.origin}${path === '/' ? '' : path}`;
+  } catch {
+    return value.replace(/\/$/, '');
+  }
+};
+
+const toOrigin = (value: string) => {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value.replace(/\/$/, '');
+  }
 };
 
 export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
@@ -75,6 +101,9 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     env.SUPABASE_SERVICE_ROLE_KEY ||
     env.SUPABASE_SERVICE_KEY ||
     env.SUPABASE_SECRET_KEY;
+  const frontendUrls = splitCsv(env.FRONTEND_URL, 'http://localhost:5173').map(normalizeUrl);
+  const frontendOrigins = frontendUrls.map(toOrigin);
+  const frontendUrl = frontendUrls[0] || 'http://localhost:5173';
 
   return {
     nodeEnv,
@@ -97,7 +126,9 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     stripeSecretKey: env.STRIPE_SECRET_KEY,
     stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
     stripePricePro: env.STRIPE_PRICE_PRO,
-    frontendUrl: env.FRONTEND_URL || 'http://localhost:5173',
+    frontendUrl,
+    frontendUrls,
+    frontendOrigins,
     enableMetricsSync: toBool(env.ENABLE_METRICS_SYNC, false),
     metrics: {
       cron: env.SYNC_CRON || '*/15 * * * *',

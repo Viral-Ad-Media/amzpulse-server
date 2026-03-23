@@ -15,12 +15,15 @@ test('loadConfig respects environment overrides', () => {
     PORT: '4000',
     RATE_LIMIT_MAX: '5',
     ENABLE_METRICS_SYNC: 'true',
-    CACHE_TTL_SECONDS: '10'
+    CACHE_TTL_SECONDS: '10',
+    FRONTEND_URL: 'https://app.example.com, https://example.com/amzpulse/'
   } as any);
 
   assert.equal(cfg.port, 4000);
   assert.equal(cfg.rateLimit.max, 5);
   assert.equal(cfg.enableMetricsSync, true);
   assert.equal(cfg.cacheTtlSeconds, 10);
+  assert.equal(cfg.frontendUrl, 'https://app.example.com');
+  assert.deepEqual(cfg.frontendUrls, ['https://app.example.com', 'https://example.com/amzpulse']);
+  assert.deepEqual(cfg.frontendOrigins, ['https://app.example.com', 'https://example.com']);
 });
-
