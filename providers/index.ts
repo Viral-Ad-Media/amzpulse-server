@@ -1,3 +1,4 @@
+import { amazonPaapiProvider } from './amazonPaapiProvider';
 import { config } from '../config';
 import { getProductData as getMockProduct } from './mockProvider';
 import { realProvider } from './realProvider';
@@ -8,20 +9,31 @@ const mockProvider: ProductProvider = {
   fetchProduct: (asin: string) => getMockProduct(asin)
 };
 
-const selectProvider = (): ProductProvider => {
-  if (config.provider.baseUrl) {
-    return realProvider;
+const selectProvider = (): { kind: 'amazon' | 'generic' | 'mock'; provider: ProductProvider } | null => {
+  if (config.amazon.enabled) {
+    return { kind: 'amazon', provider: amazonPaapiProvider };
   }
-  return mockProvider;
+  if (config.provider.baseUrl) {
+    return { kind: 'generic', provider: realProvider };
+  }
+  if (config.allowMockData) {
+    return { kind: 'mock', provider: mockProvider };
+  }
+  return null;
 };
 
 export const fetchProductFromProvider = async (asin: string): Promise<ExternalProductData> => {
-  const provider = selectProvider();
+  const selected = selectProvider();
+  if (!selected) {
+    throw new Error('No real product provider configured. Set Amazon PA-API credentials or PROVIDER_BASE_URL.');
+  }
   try {
-    return await provider.fetchProduct(asin);
+    return await selected.provider.fetchProduct(asin);
   } catch (err) {
-    logger.warn('Primary provider failed, falling back to mock provider', { error: err });
-    return await mockProvider.fetchProduct(asin);
+    if (!config.allowMockData || selected.kind === 'mock') {
+      throw err;
+    }
+    logger.warn('Primary provider failed, falling back to mock provider', { error: err, provider: selected.kind });
+    return mockProvider.fetchProduct(asin);
   }
 };
-

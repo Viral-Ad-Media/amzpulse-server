@@ -4,6 +4,16 @@ import logger from '../lib/logger';
 
 const isValidAsin = (asin?: string) => typeof asin === 'string' && /^[A-Z0-9]{10}$/.test(asin.toUpperCase());
 
+export const getFeaturedProducts = async (_req: Request, res: Response) => {
+  try {
+    const products = await productService.getFeaturedProducts();
+    return res.json(products);
+  } catch (error) {
+    logger.error('Error fetching featured products', { error });
+    return res.status(502).json({ error: 'Failed to fetch featured products' });
+  }
+};
+
 export const getProductDetails = async (req: Request, res: Response) => {
   try {
     const { asin } = req.params;

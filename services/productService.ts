@@ -37,6 +37,10 @@ const normalizeProviderData = (raw: any) => {
   };
 };
 
+const isExternalProductData = (value: any): boolean => {
+  return Boolean(value && typeof value.asin === 'string' && typeof value.title === 'string');
+};
+
 export const getProductOrFetch = async (asin: string) => {
   const cacheKey = `product:${asin}`;
   // 1. Try Redis
@@ -189,4 +193,13 @@ export const processBatch = async (asins: string[]) => {
     results.push(...resolved);
   }
   return results;
+};
+
+export const getFeaturedProducts = async () => {
+  if (config.featuredAsins.length === 0) {
+    return [];
+  }
+
+  const results = await processBatch(config.featuredAsins);
+  return results.filter(isExternalProductData);
 };

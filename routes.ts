@@ -15,6 +15,7 @@ export const sourcingRoutes = Router();
 export const billingRoutes = Router();
 
 // --- Product Routes ---
+productRoutes.get('/featured', productController.getFeaturedProducts);
 // Get historical data for charts (more specific route first)
 productRoutes.get('/:asin/history', productController.getProductHistory);
 
@@ -41,6 +42,8 @@ sourcingRoutes.delete('/:id', sourcingController.deleteSourcingNote);
 // --- Auth Routes ---
 authRoutes.post('/register', authController.register);
 authRoutes.post('/login', authController.login);
+authRoutes.post('/forgot-password', authController.forgotPassword);
+authRoutes.post('/reset-password', authController.resetPassword);
 authRoutes.get('/me', requireAuth, authController.me);
 authRoutes.get('/api-keys', requireAuth, authController.listApiKeys);
 authRoutes.post('/api-keys', requireAuth, authController.createApiKeyHandler);

@@ -1,9 +1,12 @@
 import crypto from 'crypto';
 import { config } from '../config';
 import { signJwt } from '../lib/jwt';
+import logger from '../lib/logger';
 import supabase, { requireData, throwIfError } from '../providers/supabase';
 
 const HASH_ALGO = 'scrypt';
+const PASSWORD_RESET_TOKEN_BYTES = 32;
+const PASSWORD_RESET_MESSAGE = 'If an account exists for that email, a reset link has been generated.';
 
 export type AuthContext = {
   userId: string;
@@ -38,6 +41,10 @@ export const verifyPassword = (password: string, storedHash?: string | null): Pr
 };
 
 const hashApiKey = (raw: string) => crypto.createHash('sha256').update(raw).digest('hex');
+const hashPasswordResetToken = (raw: string) => crypto.createHash('sha256').update(raw).digest('hex');
+
+const buildPasswordResetUrl = (token: string) =>
+  `${config.frontendUrl}/#/reset-password?token=${encodeURIComponent(token)}`;
 
 export const registerUser = async (
   input: { email: string; password: string; name?: string }
@@ -187,4 +194,92 @@ export const validateApiKey = async (key: string): Promise<AuthContext | null> =
     apiKeyId: apiKey.id,
     role: membership?.role
   };
+};
+
+export const requestPasswordReset = async (
+  input: { email: string }
+): Promise<{ message: string; resetToken?: string; resetUrl?: string }> => {
+  const email = input.email.toLowerCase();
+  const user = throwIfError<any>(
+    await supabase.from('User').select('id, email').eq('email', email).maybeSingle()
+  );
+
+  if (!user) {
+    return { message: PASSWORD_RESET_MESSAGE };
+  }
+
+  const rawToken = crypto.randomBytes(PASSWORD_RESET_TOKEN_BYTES).toString('hex');
+  const tokenHash = hashPasswordResetToken(rawToken);
+  const expiresAt = new Date(Date.now() + config.passwordResetTtlMinutes * 60 * 1000).toISOString();
+
+  await supabase.from('PasswordResetToken').delete().eq('userId', user.id);
+
+  requireData<any>(
+    await supabase
+      .from('PasswordResetToken')
+      .insert({
+        id: crypto.randomUUID(),
+        userId: user.id,
+        tokenHash,
+        expiresAt
+      })
+      .select()
+      .single()
+  );
+
+  const resetUrl = buildPasswordResetUrl(rawToken);
+  if (config.nodeEnv === 'production') {
+    logger.info('Password reset requested', { userId: user.id, email: user.email });
+    return { message: PASSWORD_RESET_MESSAGE };
+  }
+
+  return {
+    message: PASSWORD_RESET_MESSAGE,
+    resetToken: rawToken,
+    resetUrl
+  };
+};
+
+export const resetPasswordWithToken = async (
+  input: { token: string; password: string }
+): Promise<{ message: string }> => {
+  const tokenHash = hashPasswordResetToken(input.token);
+  const resetEntry = throwIfError<any>(
+    await supabase
+      .from('PasswordResetToken')
+      .select('id, userId, expiresAt, usedAt')
+      .eq('tokenHash', tokenHash)
+      .is('usedAt', null)
+      .gt('expiresAt', new Date().toISOString())
+      .maybeSingle()
+  );
+
+  if (!resetEntry) {
+    throw new Error('Reset link is invalid or expired');
+  }
+
+  const passwordHash = await hashPassword(input.password);
+
+  throwIfError(
+    await supabase
+      .from('User')
+      .update({ passwordHash })
+      .eq('id', resetEntry.userId)
+  );
+
+  const usedAt = new Date().toISOString();
+  throwIfError(
+    await supabase
+      .from('PasswordResetToken')
+      .update({ usedAt })
+      .eq('id', resetEntry.id)
+  );
+
+  await supabase
+    .from('PasswordResetToken')
+    .delete()
+    .eq('userId', resetEntry.userId)
+    .neq('id', resetEntry.id);
+
+  return { message: 'Password reset successful. You can now sign in with your new password.' };
 };

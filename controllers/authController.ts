@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { registerUser, loginUser, createApiKey } from '../services/authService';
+import { createApiKey, loginUser, registerUser, requestPasswordReset, resetPasswordWithToken } from '../services/authService';
 import logger from '../lib/logger';
 import supabase, { throwIfError } from '../providers/supabase';
 
@@ -50,6 +50,39 @@ export const login = async (req: Request, res: Response) => {
   } catch (err) {
     logger.warn('Login failed', { error: err });
     return res.status(401).json({ error: 'Invalid credentials' });
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'A valid email is required' });
+    }
+
+    const result = await requestPasswordReset({ email });
+    return res.json(result);
+  } catch (err) {
+    logger.warn('Forgot password failed', { error: err });
+    return res.status(500).json({ error: 'Unable to start password reset' });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, password } = req.body;
+    if (typeof token !== 'string' || token.trim().length < 16) {
+      return res.status(400).json({ error: 'A valid reset token is required' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    const result = await resetPasswordWithToken({ token: token.trim(), password });
+    return res.json(result);
+  } catch (err) {
+    logger.warn('Reset password failed', { error: err });
+    return res.status(400).json({ error: (err as Error).message || 'Unable to reset password' });
   }
 };
 

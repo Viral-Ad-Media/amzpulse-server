@@ -27,6 +27,18 @@ export interface AppConfig {
   frontendUrl: string;
   frontendUrls: string[];
   frontendOrigins: string[];
+  passwordResetTtlMinutes: number;
+  allowMockData: boolean;
+  featuredAsins: string[];
+  amazon: {
+    enabled: boolean;
+    accessKey?: string;
+    secretKey?: string;
+    partnerTag?: string;
+    marketplace: string;
+    host: string;
+    region: string;
+  };
   enableMetricsSync: boolean;
   metrics: {
     cron: string;
@@ -101,6 +113,16 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     env.SUPABASE_SERVICE_ROLE_KEY ||
     env.SUPABASE_SERVICE_KEY ||
     env.SUPABASE_SECRET_KEY;
+  const featuredAsins = splitCsv(env.FEATURED_ASINS, '').map((asin) => asin.toUpperCase()).filter((asin) => /^[A-Z0-9]{10}$/.test(asin));
+  const amazon = {
+    accessKey: env.AMAZON_PAAPI_ACCESS_KEY,
+    secretKey: env.AMAZON_PAAPI_SECRET_KEY,
+    partnerTag: env.AMAZON_PAAPI_PARTNER_TAG,
+    marketplace: env.AMAZON_PAAPI_MARKETPLACE || 'www.amazon.com',
+    host: env.AMAZON_PAAPI_HOST || 'webservices.amazon.com',
+    region: env.AMAZON_PAAPI_REGION || 'us-east-1'
+  };
+  const amazonEnabled = Boolean(amazon.accessKey && amazon.secretKey && amazon.partnerTag);
   const frontendUrls = splitCsv(env.FRONTEND_URL, 'http://localhost:5173').map(normalizeUrl);
   const frontendOrigins = frontendUrls.map(toOrigin);
   const frontendUrl = frontendUrls[0] || 'http://localhost:5173';
@@ -129,6 +151,13 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
     frontendUrl,
     frontendUrls,
     frontendOrigins,
+    passwordResetTtlMinutes: toNumber(env.PASSWORD_RESET_TTL_MINUTES, 60),
+    allowMockData: toBool(env.ALLOW_MOCK_DATA, false),
+    featuredAsins,
+    amazon: {
+      ...amazon,
+      enabled: amazonEnabled
+    },
     enableMetricsSync: toBool(env.ENABLE_METRICS_SYNC, false),
     metrics: {
       cron: env.SYNC_CRON || '*/15 * * * *',
