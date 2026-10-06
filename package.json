@@ -6,28 +6,35 @@
   "scripts": {
     "start": "node dist/app.js",
     "dev": "ts-node app.ts",
-    "build": "tsc",
-    "test": "npm run build && node --test dist/tests/**/*.js"
+    "build": "tsc && node scripts/copy-providers.cjs",
+    "test": "npm run build && node --test dist/tests/*.js tests/*.test.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.90.1",
+    "@google/genai": "^2.27.0",
+    "@supabase/supabase-js": "^2.117.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.18.2",
-    "express-rate-limit": "^6.8.0",
+    "express": "^4.22.3",
+    "express-rate-limit": "^7.5.1",
     "ioredis": "^5.3.2",
-    "morgan": "^1.10.0",
-    "node-cron": "^3.0.2",
-    "rate-limit-redis": "^2.0.0",
+    "morgan": "^1.12.1",
+    "node-cron": "^4.6.0",
+    "rate-limit-redis": "^4.3.1",
     "stripe": "^14.22.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/morgan": "^1.9.4",
-    "@types/node": "^20.11.20",
-    "remix": "^2.17.2",
+    "@types/node": "^22.20.5",
+    "@types/supertest": "^7.2.1",
+    "prettier": "^3.9.9",
+    "supertest": "^7.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -1,5 +1,5 @@
-import { getRedisClient, isRedisReady } from '../providers/redis';
-import { config } from '../config';
+import { getRedisClient, isRedisReady } from "../providers/redis";
+import { config } from "../config";
 
 type MemoryEntry = {
   value: string;
@@ -19,7 +19,13 @@ const memoryGet = (key: string) => {
 };
 
 const memorySet = (key: string, value: string, ttlSeconds?: number) => {
-  const expiresAt = ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : undefined;
+  const expiresAt =
+    ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : undefined;
+  for (const [storedKey, entry] of memoryStore)
+    if (entry.expiresAt && entry.expiresAt <= Date.now())
+      memoryStore.delete(storedKey);
+  if (memoryStore.size >= 1000)
+    memoryStore.delete(memoryStore.keys().next().value!);
   memoryStore.set(key, { value, expiresAt });
 };
 
@@ -49,13 +55,17 @@ export const cacheGetJSON = async <T = any>(key: string): Promise<T | null> => {
   }
 };
 
-export const cacheSetJSON = async (key: string, value: any, ttlSeconds = config.cacheTtlSeconds) => {
+export const cacheSetJSON = async (
+  key: string,
+  value: any,
+  ttlSeconds = config.cacheTtlSeconds,
+) => {
   const serialized = JSON.stringify(value);
   if (isRedisReady()) {
     try {
       const client = getRedisClient()!;
       if (ttlSeconds > 0) {
-        await client.set(key, serialized, 'EX', ttlSeconds);
+        await client.set(key, serialized, "EX", ttlSeconds);
       } else {
         await client.set(key, serialized);
       }
