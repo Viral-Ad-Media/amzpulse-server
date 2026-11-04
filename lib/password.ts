@@ -17,12 +17,16 @@ export const verifyPassword = (
   storedHash?: string | null,
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    if (!storedHash) return resolve(false);
+    if (
+      typeof storedHash !== "string" ||
+      !/^scrypt:[a-f0-9]{32}:[a-f0-9]{128}$/.test(storedHash)
+    )
+      return resolve(false);
     const [algo, saltHex, hashHex] = storedHash.split(":");
     if (algo !== HASH_ALGO || !saltHex || !hashHex) return resolve(false);
     const salt = Buffer.from(saltHex, "hex");
     const hash = Buffer.from(hashHex, "hex");
-    crypto.scrypt(password, salt, hash.length, (err, derivedKey) => {
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
       if (err) return reject(err);
       resolve(crypto.timingSafeEqual(hash, derivedKey));
     });

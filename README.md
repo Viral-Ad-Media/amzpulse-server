@@ -1,19 +1,19 @@
 # AmzPulse Server
 
-Express and TypeScript API for [AmzPulse](https://github.com/Viral-Ad-Media/amzpulse). The backend owns authentication, organization membership, metered product and AI requests, watchlists, sourcing notes, password recovery, and Stripe subscriptions. Supabase stores application data; Redis supplies distributed rate limits and background-job locks.
+Express and TypeScript API for [AmzPulse](https://github.com/Viral-Ad-Media/amzpulse). The backend owns authentication, organization membership, metered product and AI requests, watchlists, sourcing notes, password recovery, and Stripe subscriptions. Neon Postgres stores application data and Better Auth manages credentials and revocable sessions; Redis supplies distributed rate limits and background-job locks.
 
 ## Setup
 
-Use Node.js 22 or newer and a Supabase project.
+Use Node.js 22 or newer and a Neon Postgres project.
 
 ```sh
 npm ci
 cp .env.example .env
 ```
 
-Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and a persistent random `JWT_SECRET`. Generate the secret with `openssl rand -hex 32`. Set `FRONTEND_URL` to the frontend's full base URL; comma-separated URLs allow multiple frontend origins. The first URL supplies reset links and billing redirects, including any deployment subpath.
+Set `DATABASE_URL` to the pooled Neon connection string and `DATABASE_URL_UNPOOLED` to the direct URL from the same branch. Set a persistent `BETTER_AUTH_SECRET` (generate with `openssl rand -hex 32`), `BETTER_AUTH_URL` to the backend origin, and `FRONTEND_URL` to the frontend base URL. Production origins require HTTPS. The first frontend URL supplies recovery and billing links; comma-separated URLs permit additional frontend origins.
 
-Apply the SQL files in `supabase/migrations/` in filename order through the Supabase migration workflow or SQL editor. On an existing installation, apply only unapplied migrations. The latest migration is `20261005190000_audit_security.sql`. It is required before starting this code: it enables RLS, removes `anon` and `authenticated` table/function access, and adds transactional registration, password reset, quotas, subscription updates, session versions, and canonical product storage. Use the backend service-role key; a publishable key cannot operate this API.
+Run `npm run migrate` using the direct connection. It applies `migrations/*.sql` in order under an advisory lock, records checksums, and refuses changed applied migrations. Test on a development branch before production. Application tables are private and accessed only by the backend database owner. No Supabase project, service key, SDK, Data API or JWT secret is required. The old `supabase/migrations/` directory is historical reference only and must not be applied to Neon.
 
 Configure at least one product provider below, then run:
 
@@ -28,17 +28,17 @@ npm run build
 npm start
 ```
 
-The build copies the ESM provider modules into `dist/product-api/`. Deploy that directory with the compiled API. `GET /health` returns the API status; it is a liveness check, not a live probe of Supabase, Stripe, or provider credentials.
+The build copies ESM providers into `dist/product-api/` and the Better Auth runtime into `dist/auth-runtime/`. Deploy the complete `dist/` directory with runtime dependencies. `GET /health` returns the API status; it is a liveness check, not a live probe of Neon, Stripe, or provider credentials.
 
 ## Environment
 
-The complete template is [.env.example](.env.example). Production requires `REDIS_URL`, explicit HTTPS frontend URLs, and a persistent random JWT secret of at least 32 characters. Redis must connect before the server starts; distributed rate-limit failures fail closed. In local development without Redis, limits and the bounded product cache use process memory.
+The complete template is [.env.example](.env.example). Production requires `REDIS_URL`, explicit HTTPS frontend URLs, and a persistent random Better Auth secret of at least 32 characters. Redis must connect before the server starts; distributed rate-limit failures fail closed. In local development without Redis, limits and the bounded product cache use process memory.
 
 | Settings                                                                  | Purpose                                                                                                                               |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `PORT`, `NODE_ENV`                                                        | HTTP listener and runtime mode.                                                                                                       |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`                               | Required server-owned database access.                                                                                                |
-| `JWT_SECRET`                                                              | Persistent JWT signing secret. Sessions last one hour; live membership and token-version checks apply on every authenticated request. |
+| `DATABASE_URL`, `DATABASE_URL_UNPOOLED` | Pooled Neon application connection and direct migration connection, from the same branch. |
+| `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | Persistent secret of at least 32 random characters and backend HTTPS origin. Sessions last seven days and are checked in the database on every request. |
 | `FRONTEND_URL`                                                            | Comma-separated frontend base URLs. Origins determine CORS; first URL supplies redirects and recovery links.                          |
 | `REDIS_URL`, `RATE_LIMIT_*`                                               | Shared IP rate limits and product caching. Global, auth, and batch stores have separate prefixes.                                     |
 | `TRUST_PROXY_HOPS`                                                        | Exact number of trusted reverse-proxy hops, default `0`. Set only when every request uses the same controlled proxy path.             |
@@ -70,9 +70,11 @@ Discovery uses Rainforest category pages. `TRENDING_CATEGORY_URL` defaults to el
 
 ## Authentication and usage
 
-Send `Authorization: Bearer <token>` or `X-API-Key: <key>` on protected routes. API keys are returned once when created; the database stores only their hashes. Keys require a current membership. Password resets atomically consume one unexpired token, change the password, increment the user's session version, invalidate existing JWTs, revoke that user's API keys, and remove their other reset tokens. Reset endpoints never return a reset URL or token, in any runtime mode.
+Send `Authorization: Bearer <token>` or `X-API-Key: <key>` on protected routes. API keys are returned once when created; the database stores only their hashes. Keys require a current membership. Password resets consume one unexpired Better Auth verification, change the password, revoke all sessions and that user's API keys, and remove legacy reset tokens. Reset endpoints never return a reset URL or token, in any runtime mode.
 
-Application JWTs are distinct from Supabase Auth tokens. Browser clients cannot access application tables directly. Tenant access is enforced in the backend with the live organization membership and organization filters.
+Browser authentication uses opaque Better Auth session tokens through the existing `/api/auth/register`, `/login`, `/me`, `/forgot-password`, `/reset-password` endpoints. `POST /api/auth/logout` revokes the current session. The frontend retains bearer transport for separate Render frontend/backend origins; tokens remain sensitive browser credentials. Auth cookies and OAuth are not enabled by this integration. Account linking is disabled. Email/password registration requires 12–256 characters; existing valid legacy passwords can still sign in. Every protected request rechecks the session and live membership; API keys retain their existing tenant checks. Clients never receive database credentials.
+
+Registration provisions the account and owner workspace through a database trigger. Password recovery uses Better Auth's single-use verification records; password changes revoke all sessions and API keys in the same transaction via a credential trigger. Old custom JWTs and reset links are not accepted after cutover.
 
 | Plan | Monthly ASIN credits | Monthly AI calls | Maximum batch |
 | ---- | -------------------: | ---------------: | ------------: |
@@ -112,10 +114,10 @@ Create the Pro recurring price and configure the billing portal. Point Stripe at
 
 Before releasing these paired changes:
 
-1. Back up the database and apply the security migration with deployment access.
-2. Configure the service-role key, random JWT secret, Redis, HTTPS frontend URLs, provider credentials, reset sender, and Stripe webhook/price/portal.
+1. Back up/export the old database, apply the Neon migrations, and import existing records into the empty target.
+2. Configure Neon database URLs, BETTER_AUTH_SECRET, BETTER_AUTH_URL, Redis, HTTPS frontend URLs, provider credentials, reset sender, and Stripe webhook/price/portal.
 3. Deploy the backend and verify registration, membership, reset email, representative provider fields, quota refunds, and signed billing events in staging.
-4. Deploy the matching frontend with its backend origin. Existing JWT sessions must sign in again because old tokens lack a session version.
+4. Deploy the matching frontend with its backend origin. Existing sessions must sign in again because authentication now uses Better Auth sessions.
 
 The migration disables direct client table access by design. Do not roll the API back independently after migration without reviewing schema compatibility. Historical Pro rows with no valid period end need Stripe state reconciliation; they receive Free limits until reconciled. This repository change does not apply production migrations, rotate deployed secrets, deploy services, or send test emails.
 
@@ -128,4 +130,10 @@ npm test
 npm audit
 ```
 
-`npm test` builds the API and tests passwords/JWT/config, HTTP auth and tenant filters, quota settlement/refunds, missing AI configuration, provider deadlines/mapping, and the actual SQL migrations/functions using PGlite's embedded PostgreSQL. Embedded database queries run on one connection; the row-lock design still requires a multi-connection staging check for production concurrency. Tests do not contact a live Supabase, Stripe, email, or product-provider account. GitHub Actions runs these checks and a dependency audit.
+`npm test` builds the API and tests passwords/config, Better Auth signup/session/recovery and imported credentials, the parameterized SQL adapter, HTTP auth and tenant filters, quota settlement/refunds, missing AI configuration, provider deadlines/mapping, and the actual SQL migrations/functions using PGlite's embedded PostgreSQL. Embedded database queries run on one connection; the row-lock design still requires a multi-connection staging check for production concurrency. Tests do not contact a live Neon, Stripe, email, or product-provider account. GitHub Actions runs these checks and a dependency audit.
+
+## Render deployment and database cutover
+
+Backend Web Service: build `npm ci --include=dev && npm run build`, start `npm start`. Set `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `FRONTEND_URL`, `REDIS_URL`, and existing provider/billing/email variables. Run `npm run migrate` as a pre-deploy step or controlled migration job before starting the new API. Database migrations are deliberately not run during builds. The frontend is a Static Site with build `npm ci --include=dev && npm run build`, publish directory `dist`, and build-time `VITE_API_BASE` pointing at the backend origin.
+
+For existing data, follow [docs/neon-cutover.md](docs/neon-cutover.md). Do not switch production to an empty Neon branch if existing accounts or billing records must be retained. Never commit exported account data, connection strings, or auth secrets. This branch prepares the migration; it does not itself update Render, publish code, or copy source data.

@@ -16,6 +16,8 @@ import startMetricsSync from "./jobs/metricsSync";
 import { config } from "./config";
 import logger from "./lib/logger";
 import { asyncHandler } from "./lib/asyncHandler";
+import { pool } from "./providers/database";
+import { identity } from "./services/identityService";
 import { ensureRedis } from "./providers/redis";
 import * as billingController from "./controllers/billingController";
 
@@ -110,21 +112,19 @@ app.use((err: any, req: any, res: any, next: any) => {
       : err instanceof SyntaxError
         ? 400
         : 500;
-  res
-    .status(status)
-    .json({
-      error:
-        status === 500
-          ? "Service unavailable. Try again later."
-          : status === 413
-            ? "Request too large"
-            : "Invalid JSON",
-    });
+  res.status(status).json({
+    error:
+      status === 500
+        ? "Service unavailable. Try again later."
+        : status === 413
+          ? "Request too large"
+          : "Invalid JSON",
+  });
 });
 
 // Start Server with graceful shutdown and start background job
 if (config.nodeEnv !== "test") {
-  ensureRedis()
+  Promise.all([ensureRedis(), pool.query("SELECT 1"), identity()])
     .then(() => {
       if (config.enableMetricsSync) {
         startMetricsSync();
@@ -141,7 +141,7 @@ if (config.nodeEnv !== "test") {
         logger.info("Shutting down server...");
         server.close(() => {
           logger.info("Server closed. Exiting.");
-          process.exit(0);
+          void pool.end().finally(() => process.exit(0));
         });
         // force exit after timeout
         setTimeout(() => process.exit(1), 10_000).unref();

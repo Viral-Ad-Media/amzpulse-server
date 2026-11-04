@@ -26,7 +26,7 @@ The paired frontend/backend changes address the 32 findings from the October 202
 | A20     | Unknown fees block calculator results; manual fees supported and referral overrides invalidated when sale price changes.                           |
 | A21     | Latest Keepa unavailable markers preserved; timestamps retained. App adapters explicitly support US/USD and reject non-US configuration.           |
 | A22     | Canonical payload persists source metadata, coverage, unknowns, and histories. New cache namespace avoids old synthetic payloads.                  |
-| A23     | Supabase-only scheduled refresh, attempted-time queue rotation, bounded positive concurrency/time budget, and shared job lock.                     |
+| A23     | Postgres scheduled refresh, attempted-time queue rotation, bounded positive concurrency/time budget, and shared job lock.                     |
 | A24     | Provider/database/Redis deadlines, bounded retries/concurrency, batch time budget, and bounded memory cache.                                       |
 | A25     | Browser notes scoped to user and organization; edits persist immediately.                                                                          |
 | A26     | AI errors display unavailable state, without invented grade/score; server validates output shape.                                                  |
@@ -38,3 +38,5 @@ The paired frontend/backend changes address the 32 findings from the October 202
 | A32     | Discovery labeled category bestsellers; explicit paid load action; no claims of measured trends/all-time popularity.                               |
 
 Both READMEs explain environment variables, deployment, API behavior, and limitations. Before deployment, apply the migration, configure the backend credentials and distributed infrastructure, reconcile historical Stripe subscriptions with missing period ends, test real email/provider/billing flows, and verify multi-connection PostgreSQL quota contention in staging. The embedded SQL test runs actual PostgreSQL functions on one connection and does not substitute for that staging check. Neither repository has been merged or deployed by this remediation work.
+
+The Neon migration replaces Supabase transport and custom JWT login with direct Postgres and Better Auth. See [neon-cutover.md](neon-cutover.md) for current storage/auth behavior; historical Supabase/JWT references above describe the earlier audit implementation.

@@ -70,7 +70,7 @@ const db = {
     return q;
   },
 };
-inject("../dist/providers/supabase.js", {
+inject("../dist/providers/database.js", {
   __esModule: true,
   default: db,
   throwIfError: ({ data, error }) => {
@@ -79,7 +79,7 @@ inject("../dist/providers/supabase.js", {
   },
 });
 const { startMetricsSync } = require("../dist/jobs/metricsSync.js");
-test("Supabase sync needs no DATABASE_URL, rotates failed attempts and honors shared lock", async () => {
+test("Postgres sync rotates failed attempts and honors shared lock", async () => {
   startMetricsSync();
   await tick();
   assert.deepEqual(order.slice(0, 2), ["syncAttemptedAt", "asin"]);

@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import crypto from "crypto";
-import supabase, { throwIfError } from "../providers/supabase";
+import database, { throwIfError } from "../providers/database";
 import { getProductOrFetch } from "../services/productService";
 import { ensureRedis } from "../providers/redis";
 import { config } from "../config";
@@ -26,7 +26,7 @@ export const startMetricsSync = () => {
       if (!locked) return;
       const rows: any[] =
         throwIfError(
-          await supabase
+          await database
             .from("Product")
             .select("asin")
             .order("syncAttemptedAt", { ascending: true, nullsFirst: true })
@@ -45,7 +45,7 @@ export const startMetricsSync = () => {
             .map(async (row) => {
               try {
                 throwIfError(
-                  await supabase
+                  await database
                     .from("Product")
                     .update({ syncAttemptedAt: new Date().toISOString() })
                     .eq("asin", row.asin),
@@ -58,19 +58,19 @@ export const startMetricsSync = () => {
         );
       }
       throwIfError(
-        await supabase
+        await database
           .from("ProductMetric")
           .delete()
           .lt("timestamp", new Date(Date.now() - 180 * 86400000).toISOString()),
       );
       throwIfError(
-        await supabase
+        await database
           .from("PasswordResetToken")
           .delete()
           .lt("expiresAt", new Date().toISOString()),
       );
       throwIfError(
-        await supabase
+        await database
           .from("UsageReservation")
           .delete()
           .lt("settledAt", new Date(Date.now() - 7 * 86400000).toISOString()),

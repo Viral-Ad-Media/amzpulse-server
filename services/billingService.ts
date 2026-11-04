@@ -1,7 +1,7 @@
 import { ensureRedis } from "../providers/redis";
 import { config } from "../config";
 import logger from "../lib/logger";
-import supabase, { requireData, throwIfError } from "../providers/supabase";
+import database, { requireData, throwIfError } from "../providers/database";
 import crypto from "crypto";
 
 type PlanName = "free" | "pro";
@@ -39,7 +39,7 @@ const currentMonthKey = () => {
 export const getUsage = async (organizationId: string): Promise<any> => {
   const month = currentMonthKey();
   throwIfError(
-    await supabase
+    await database
       .from("OrganizationUsage")
       .upsert(
         { organizationId, month },
@@ -47,7 +47,7 @@ export const getUsage = async (organizationId: string): Promise<any> => {
       ),
   );
   return requireData(
-    await supabase
+    await database
       .from("OrganizationUsage")
       .select("*")
       .eq("organizationId", organizationId)
@@ -63,7 +63,7 @@ export const reserveUsage = async (
 ): Promise<string> => {
   const id = crypto.randomUUID();
   return requireData(
-    await supabase.rpc("reserve_usage", {
+    await database.rpc("reserve_usage", {
       p_org: organizationId,
       p_units: count,
       p_kind: kind,
@@ -74,7 +74,7 @@ export const reserveUsage = async (
 };
 export const settleUsage = async (id: string, success: number) => {
   throwIfError(
-    await supabase.rpc("settle_usage", { p_id: id, p_success: success }),
+    await database.rpc("settle_usage", { p_id: id, p_success: success }),
   );
 };
 export const plansPublic = () =>
@@ -109,7 +109,7 @@ export const createCheckoutSession = async (opts: {
   if (!stripe || !config.stripePricePro)
     throw new Error("Stripe not configured");
   const org: any = requireData(
-    await supabase
+    await database
       .from("Organization")
       .select("id,stripeCustomerId,stripeSubscriptionId")
       .eq("id", opts.organizationId)
@@ -127,7 +127,7 @@ export const createCheckoutSession = async (opts: {
       )
     ).id;
   throwIfError(
-    await supabase
+    await database
       .from("Organization")
       .update({ stripeCustomerId: customer })
       .eq("id", org.id),
@@ -199,7 +199,7 @@ export const handleStripeWebhook = async (event: any) => {
     typeof data.customer === "string" ? data.customer : data.customer?.id;
   if (!customer) throw new Error("Missing billing customer");
   const org: any = throwIfError(
-    await supabase
+    await database
       .from("Organization")
       .select("id,stripeSubscriptionId")
       .eq("stripeCustomerId", customer)
@@ -231,7 +231,7 @@ export const handleStripeWebhook = async (event: any) => {
       active || relevant.sort((a: any, b: any) => b.created - a.created)[0];
     if (!current) return;
     throwIfError(
-      await supabase.rpc("apply_subscription", {
+      await database.rpc("apply_subscription", {
         p_org: org.id,
         p_customer: customer,
         p_subscription: current.id,

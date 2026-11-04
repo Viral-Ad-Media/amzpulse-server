@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import logger from "../lib/logger";
-import supabase, { throwIfError } from "../providers/supabase";
+import database, { throwIfError } from "../providers/database";
 import { normalizeAsin } from "../lib/validation";
 import crypto from "crypto";
 
@@ -8,7 +8,7 @@ export const listSourcingNotes = async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const notes =
     throwIfError<any[]>(
-      await supabase
+      await database
         .from("SourcingNote")
         .select("*")
         .eq("organizationId", req.user.organizationId),
@@ -18,7 +18,7 @@ export const listSourcingNotes = async (req: Request, res: Response) => {
   const products =
     asins.length > 0
       ? throwIfError<any[]>(
-          await supabase.from("Product").select("*").in("asin", asins),
+          await database.from("Product").select("*").in("asin", asins),
         ) || []
       : [];
   const productMap = new Map<string, any>();
@@ -68,7 +68,7 @@ export const addSourcingNote = async (req: Request, res: Response) => {
 
   try {
     const row: any = throwIfError(
-      await supabase
+      await database
         .from("Product")
         .select("asin")
         .eq("asin", asin)
@@ -79,7 +79,7 @@ export const addSourcingNote = async (req: Request, res: Response) => {
         .status(400)
         .json({ error: "Look up this product before saving it" });
     const note = throwIfError<any>(
-      await supabase
+      await database
         .from("SourcingNote")
         .insert({
           id: crypto.randomUUID(),
@@ -104,7 +104,7 @@ export const deleteSourcingNote = async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const { id } = req.params;
   throwIfError(
-    await supabase
+    await database
       .from("SourcingNote")
       .delete()
       .eq("organizationId", req.user.organizationId)
