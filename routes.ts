@@ -74,6 +74,7 @@ sourcingRoutes.delete(
 // --- Auth Routes ---
 authRoutes.post("/register", asyncHandler(authController.register));
 authRoutes.post("/login", asyncHandler(authController.login));
+authRoutes.post("/logout", asyncHandler(authController.logout));
 authRoutes.post(
   "/forgot-password",
   asyncHandler(authController.forgotPassword),

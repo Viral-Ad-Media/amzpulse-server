@@ -4,6 +4,11 @@ type Level = "debug" | "info" | "warn" | "error";
 
 const serializeError = (err: unknown) => {
   if (!err) return undefined;
+  if ((err as any).type === "entity.parse.failed")
+    return {
+      message: "Invalid JSON request body",
+      type: "entity.parse.failed",
+    };
   if (err instanceof Error) {
     return {
       message: err.message,

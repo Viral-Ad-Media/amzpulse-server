@@ -4,7 +4,8 @@ import { createRequire } from "node:module";
 import request from "supertest";
 const require = createRequire(import.meta.url);
 process.env.NODE_ENV = "test";
-process.env.JWT_SECRET = "test-persistent-secret-with-at-least-32-characters";
+process.env.BETTER_AUTH_SECRET =
+  "test-persistent-secret-with-at-least-32-characters";
 delete process.env.REDIS_URL;
 delete process.env.PROVIDER_BASE_URL;
 let missingMember = false,
@@ -92,7 +93,7 @@ const db = {
     };
   },
 };
-const modulePath = require.resolve("../dist/providers/supabase.js");
+const modulePath = require.resolve("../dist/providers/database.js");
 require.cache[modulePath] = {
   id: modulePath,
   filename: modulePath,
@@ -100,7 +101,7 @@ require.cache[modulePath] = {
   exports: {
     __esModule: true,
     default: db,
-    supabase: db,
+    database: db,
     throwIfError: ({ data, error }) => {
       if (error) throw error;
       return data;
@@ -112,17 +113,34 @@ require.cache[modulePath] = {
     },
   },
 };
+const identityPath = require.resolve("../dist/services/identityService.js");
+require.cache[identityPath] = {
+  id: identityPath,
+  filename: identityPath,
+  loaded: true,
+  exports: {
+    identityHeaders: (authorization) =>
+      new Headers(authorization ? { authorization } : {}),
+    identity: async () => ({
+      api: {
+        getSession: async ({ headers }) =>
+          headers.get("authorization")?.startsWith("Bearer test-session") &&
+          !version
+            ? { user: { id: "user1", email: "test@example.com" } }
+            : null,
+        requestPasswordReset: async () => ({ status: true }),
+        signOut: async () => ({ success: true }),
+      },
+    }),
+  },
+};
 const app = require("../dist/app.js").default;
-const { signJwt } = require("../dist/lib/jwt.js");
+
 const {
   subscriptionEntitled,
   effectivePlan,
 } = require("../dist/services/billingService.js");
-const token = signJwt(
-  { sub: "user1", orgId: "org1", version: 0 },
-  process.env.JWT_SECRET,
-  3600,
-);
+const token = "test-session";
 const authorized = (method, path) =>
   request(app)[method](path).set("Authorization", `Bearer ${token}`);
 
@@ -160,30 +178,29 @@ test("HTTP auth, isolation, metering and async failure handling", async (t) => {
     );
     assert.equal(rpcCalls.length, 0);
   });
-  await t.test("password reset invalidates existing JWTs", async () => {
+  await t.test("password reset invalidates existing sessions", async () => {
     version = 1;
     assert.equal((await authorized("get", "/api/auth/me")).status, 401);
     version = 0;
   });
-  await t.test("membership removal rejects both JWT and API key", async () => {
-    missingMember = true;
-    assert.equal((await authorized("get", "/api/auth/me")).status, 401);
-    assert.equal(
-      (
-        await request(app)
-          .get("/api/auth/me")
-          .set("X-API-Key", "ak_" + "a".repeat(48))
-      ).status,
-      401,
-    );
-    missingMember = false;
-  });
-  await t.test("live role wins over JWT role claim", async () => {
-    const other = signJwt(
-      { sub: "user1", orgId: "org1", version: 0, role: "member" },
-      process.env.JWT_SECRET,
-      3600,
-    );
+  await t.test(
+    "membership removal rejects both session and API key",
+    async () => {
+      missingMember = true;
+      assert.equal((await authorized("get", "/api/auth/me")).status, 401);
+      assert.equal(
+        (
+          await request(app)
+            .get("/api/auth/me")
+            .set("X-API-Key", "ak_" + "a".repeat(48))
+        ).status,
+        401,
+      );
+      missingMember = false;
+    },
+  );
+  await t.test("live membership role governs session access", async () => {
+    const other = "test-session-other";
     const response = await request(app)
       .get("/api/auth/me")
       .set("Authorization", `Bearer ${other}`);

@@ -19,7 +19,9 @@ export interface AppConfig {
     max: number;
     prefix: string;
   };
-  jwtSecret: string;
+  authSecret: string;
+  authUrl: string;
+  databaseUrl?: string;
   stripeSecretKey?: string;
   stripeWebhookSecret?: string;
   stripePricePro?: string;
@@ -33,10 +35,6 @@ export interface AppConfig {
     cron: string;
     batchSize: number;
     concurrency: number;
-  };
-  supabase: {
-    url?: string;
-    serviceKey?: string;
   };
 }
 
@@ -85,28 +83,27 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
   const cacheTtlSeconds = toNumber(env.CACHE_TTL_SECONDS, 120);
   const dbFreshMs = toNumber(env.DB_FRESH_MS, 1000 * 60 * 5);
 
-  if (
-    nodeEnv === "production" &&
-    (!(env.JWT_SECRET || env.SECRET) ||
-      (env.JWT_SECRET || env.SECRET || "").length < 32 ||
-      /replace.me/i.test(env.JWT_SECRET || env.SECRET || ""))
-  )
+  const authSecret =
+    env.BETTER_AUTH_SECRET ||
+    (nodeEnv === "production" ? "" : crypto.randomBytes(32).toString("hex"));
+  if (authSecret.length < 32 || /replace.me/i.test(authSecret))
     throw new Error(
-      "Production requires a persistent random JWT_SECRET of at least 32 characters",
+      "BETTER_AUTH_SECRET must be a persistent random value of at least 32 characters",
     );
-  const jwtSecret =
-    env.JWT_SECRET || env.SECRET || crypto.randomBytes(32).toString("hex");
-  if (!env.JWT_SECRET && !env.SECRET) {
-    console.warn(
-      "[config] JWT_SECRET not provided. Generated a temporary secret for this runtime.",
-    );
-  }
-
-  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL;
-  const supabaseServiceKey =
-    env.SUPABASE_SERVICE_ROLE_KEY ||
-    env.SUPABASE_SERVICE_KEY ||
-    env.SUPABASE_SECRET_KEY;
+  const authUrl =
+    env.BETTER_AUTH_URL ||
+    (nodeEnv === "production" ? "" : "http://localhost:3001");
+  const parsedAuth = new URL(authUrl);
+  if (
+    !["http:", "https:"].includes(parsedAuth.protocol) ||
+    parsedAuth.username ||
+    parsedAuth.password ||
+    (nodeEnv === "production" && parsedAuth.protocol !== "https:")
+  )
+    throw new Error("BETTER_AUTH_URL must use HTTPS in production");
+  const databaseUrl = env.DATABASE_URL;
+  if (nodeEnv === "production" && !databaseUrl)
+    throw new Error("Production requires DATABASE_URL for Neon Postgres");
   const featuredAsins = splitCsv(env.FEATURED_ASINS, "")
     .map((asin) => asin.toUpperCase())
     .filter((asin) => /^[A-Z0-9]{10}$/.test(asin));
@@ -144,7 +141,9 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       max: toNumber(env.RATE_LIMIT_MAX, 100),
       prefix: env.RATE_LIMIT_PREFIX || "rl:",
     },
-    jwtSecret,
+    authSecret,
+    authUrl,
+    databaseUrl,
     stripeSecretKey: env.STRIPE_SECRET_KEY,
     stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
     stripePricePro: env.STRIPE_PRICE_PRO,
@@ -158,10 +157,6 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
       cron: env.SYNC_CRON || "*/15 * * * *",
       batchSize: toNumber(env.SYNC_BATCH_SIZE, 10),
       concurrency: toNumber(env.SYNC_CONCURRENCY, 3),
-    },
-    supabase: {
-      url: supabaseUrl,
-      serviceKey: supabaseServiceKey,
     },
   };
 };

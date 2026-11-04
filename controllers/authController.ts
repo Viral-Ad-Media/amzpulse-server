@@ -1,6 +1,7 @@
 import { effectivePlan } from "../services/billingService";
 import { Request, Response } from "express";
 import {
+  signOut,
   createApiKey,
   loginUser,
   registerUser,
@@ -8,7 +9,7 @@ import {
   resetPasswordWithToken,
 } from "../services/authService";
 import logger from "../lib/logger";
-import supabase, { throwIfError } from "../providers/supabase";
+import database, { throwIfError } from "../providers/database";
 
 const isValidEmail = (email?: string) =>
   typeof email === "string" &&
@@ -24,14 +25,12 @@ export const register = async (req: Request, res: Response) => {
     if (
       !isValidEmail(email) ||
       typeof password !== "string" ||
-      password.length < 8 ||
+      password.length < 12 ||
       password.length > 256
     ) {
-      return res
-        .status(400)
-        .json({
-          error: "Email and password are required (password min 8 chars)",
-        });
+      return res.status(400).json({
+        error: "Email and password are required (password min 12 chars)",
+      });
     }
     const result = await registerUser({ email, password, name });
     return res.status(201).json({
@@ -42,6 +41,7 @@ export const register = async (req: Request, res: Response) => {
         name: result.user.name,
       },
       organization: result.organization,
+      organizationId: result.organizationId,
       plan: result.organization.plan || "free",
       role: "owner",
       planRenewsAt: result.organization.planRenewsAt || null,
@@ -64,7 +64,7 @@ export const login = async (req: Request, res: Response) => {
     }
     const result = await loginUser({ email, password });
     const org = throwIfError<any>(
-      await supabase
+      await database
         .from("Organization")
         .select("plan, planRenewsAt")
         .eq("id", result.organizationId)
@@ -111,12 +111,12 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
     if (
       typeof password !== "string" ||
-      password.length < 8 ||
+      password.length < 12 ||
       password.length > 256
     ) {
       return res
         .status(400)
-        .json({ error: "Password must be at least 8 characters" });
+        .json({ error: "Password must be at least 12 characters" });
     }
 
     const result = await resetPasswordWithToken({
@@ -128,7 +128,10 @@ export const resetPassword = async (req: Request, res: Response) => {
     logger.warn("Reset password failed", { error: err });
     return res
       .status(400)
-      .json({ error: (err as Error).message || "Unable to reset password" });
+      .json({
+        error:
+          "Reset link is invalid, expired, or the request could not be completed",
+      });
   }
 };
 
@@ -137,14 +140,14 @@ export const me = async (req: Request, res: Response) => {
     return res.status(401).json({ error: "Unauthorized" });
   }
   const user = throwIfError<any>(
-    await supabase
+    await database
       .from("User")
       .select("id, email, name")
       .eq("id", req.user.userId)
       .maybeSingle(),
   );
   const org = throwIfError<any>(
-    await supabase
+    await database
       .from("Organization")
       .select("plan, planRenewsAt")
       .eq("id", req.user.organizationId)
@@ -163,7 +166,7 @@ export const listApiKeys = async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const keys =
     throwIfError<any[]>(
-      await supabase
+      await database
         .from("ApiKey")
         .select("id, label, createdAt, lastUsedAt, expiresAt, revoked")
         .eq("organizationId", req.user.organizationId)
@@ -210,12 +213,17 @@ export const createApiKeyHandler = async (req: Request, res: Response) => {
 export const revokeApiKey = async (req: Request, res: Response) => {
   if (!req.user) return res.sendStatus(401);
   throwIfError(
-    await supabase
+    await database
       .from("ApiKey")
       .update({ revoked: true })
       .eq("id", req.params.id)
       .eq("userId", req.user.userId)
       .eq("organizationId", req.user.organizationId),
   );
+  return res.status(204).send();
+};
+
+export const logout = async (req: Request, res: Response) => {
+  await signOut(req.headers.authorization);
   return res.status(204).send();
 };

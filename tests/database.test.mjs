@@ -13,10 +13,10 @@ test("database access, registration/reset transactions, quotas and webhook order
       "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
     );
     for (const filename of (
-      await readdir(new URL("../supabase/migrations/", import.meta.url))
+      await readdir(new URL("../migrations/", import.meta.url))
     ).sort()) {
       const sql = await readFile(
-        new URL("../supabase/migrations/" + filename, import.meta.url),
+        new URL("../migrations/" + filename, import.meta.url),
         "utf8",
       );
       await db.exec(
@@ -50,7 +50,7 @@ test("database access, registration/reset transactions, quotas and webhook order
     const tables = await query(
       "SELECT relname,relrowsecurity FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind='r'",
     );
-    assert.equal(tables.length, 11);
+    assert.equal(tables.length, 14);
     assert.ok(tables.every((t) => t.relrowsecurity));
     for (const role of ["anon", "authenticated"]) {
       for (const table of tables)
@@ -82,7 +82,7 @@ test("database access, registration/reset transactions, quotas and webhook order
       ),
       /permission denied/,
     );
-    await db.exec("RESET ROLE; SET ROLE service_role");
+    await db.exec("RESET ROLE");
     const reserve = (units, kind = "asin", id = randomUUID()) =>
       query("SELECT reserve_usage($1,$2,$3,$4)", [org, units, kind, id]);
     const settle = (id, success) =>

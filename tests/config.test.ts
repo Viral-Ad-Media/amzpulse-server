@@ -9,7 +9,7 @@ test("loadConfig falls back to defaults", () => {
   assert.equal(cfg.enableMetricsSync, false);
   assert.equal(cfg.passwordResetTtlMinutes, 60);
   assert.deepEqual(cfg.featuredAsins, []);
-  assert.ok(cfg.jwtSecret.length > 0);
+  assert.ok(cfg.authSecret.length > 0);
 });
 
 test("loadConfig respects environment overrides", () => {

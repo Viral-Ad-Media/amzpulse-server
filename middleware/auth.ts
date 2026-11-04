@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyJwt } from "../lib/jwt";
-import { config } from "../config";
+import { identity, identityHeaders } from "../services/identityService";
 import { validateApiKey } from "../services/authService";
 import logger from "../lib/logger";
-import supabase, { throwIfError } from "../providers/supabase";
+import database, { throwIfError } from "../providers/database";
 
 export const requireAuth = async (
   req: Request,
@@ -16,30 +15,26 @@ export const requireAuth = async (
   let context = null;
 
   if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.replace("Bearer ", "").trim();
-    const payload = verifyJwt(token, config.jwtSecret);
-    if (payload) {
-      const user: any = throwIfError(
-        await supabase
-          .from("User")
-          .select("tokenVersion,email")
-          .eq("id", payload.sub)
-          .maybeSingle(),
-      );
+    const auth = await identity();
+    const session = await auth.api.getSession({
+      headers: identityHeaders(authHeader),
+    });
+    if (session?.user) {
       const membership: any = throwIfError(
-        await supabase
+        await database
           .from("Membership")
-          .select("role")
-          .eq("userId", payload.sub)
-          .eq("organizationId", payload.orgId)
+          .select("organizationId,role")
+          .eq("userId", session.user.id)
+          .order("createdAt")
+          .limit(1)
           .maybeSingle(),
       );
-      if (!user || !membership || payload.version !== user.tokenVersion)
+      if (!membership)
         return res.status(401).json({ error: "Session expired" });
       context = {
-        userId: payload.sub,
-        organizationId: payload.orgId,
-        email: user.email,
+        userId: session.user.id,
+        organizationId: membership.organizationId,
+        email: session.user.email,
         role: membership.role,
       };
     }

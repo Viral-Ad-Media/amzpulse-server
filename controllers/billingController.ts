@@ -2,7 +2,7 @@ import { effectivePlan } from "../services/billingService";
 import { Request, Response } from "express";
 import { config } from "../config";
 import logger from "../lib/logger";
-import supabase, { throwIfError } from "../providers/supabase";
+import database, { throwIfError } from "../providers/database";
 import {
   plansPublic,
   getUsage,
@@ -20,7 +20,7 @@ export const usage = async (req: Request, res: Response) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
   const usage = await getUsage(req.user.organizationId);
   const org = throwIfError<any>(
-    await supabase
+    await database
       .from("Organization")
       .select("plan, planRenewsAt")
       .eq("id", req.user.organizationId)

@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { cacheGetJSON, cacheSetJSON } from "./cacheService";
 import { config } from "../config";
 import { getExternalProduct } from "./externalProductClient";
-import supabase, { throwIfError } from "../providers/supabase";
+import database, { throwIfError } from "../providers/database";
 import { normalizeAsin } from "../lib/validation";
 export const canonicalProduct = (raw: any, asin: string) => ({
   ...raw,
@@ -30,7 +30,7 @@ export const getProductOrFetch = async (value: string, force = false) => {
   const cached = await cacheGetJSON<any>(key);
   if (cached && !force) return cached;
   const stored: any = throwIfError(
-    await supabase
+    await database
       .from("Product")
       .select("canonicalData,updatedAt")
       .eq("asin", asin)
@@ -48,25 +48,23 @@ export const getProductOrFetch = async (value: string, force = false) => {
   const live = canonicalProduct(await getExternalProduct(asin), asin);
   // Canonical payload preserves unknowns, source coverage and provider history across every cache path.
   throwIfError(
-    await supabase
-      .from("Product")
-      .upsert(
-        {
-          asin,
-          title: live.title,
-          image: live.image || "",
-          category: live.category || "Amazon",
-          currentPrice: live.price ?? 0,
-          currentBsr: live.bsr ?? 0,
-          estSales: live.estSales ?? 0,
-          sellers: live.sellers ?? 0,
-          referralFee: live.referralFee ?? 0,
-          fbaFee: live.fbaFee ?? 0,
-          canonicalData: live,
-          updatedAt: new Date().toISOString(),
-        },
-        { onConflict: "asin" },
-      ),
+    await database.from("Product").upsert(
+      {
+        asin,
+        title: live.title,
+        image: live.image || "",
+        category: live.category || "Amazon",
+        currentPrice: live.price ?? 0,
+        currentBsr: live.bsr ?? 0,
+        estSales: live.estSales ?? 0,
+        sellers: live.sellers ?? 0,
+        referralFee: live.referralFee ?? 0,
+        fbaFee: live.fbaFee ?? 0,
+        canonicalData: live,
+        updatedAt: new Date().toISOString(),
+      },
+      { onConflict: "asin" },
+    ),
   );
   if (
     typeof live.price === "number" &&
@@ -75,14 +73,12 @@ export const getProductOrFetch = async (value: string, force = false) => {
     live.bsr > 0
   )
     throwIfError(
-      await supabase
-        .from("ProductMetric")
-        .insert({
-          id: crypto.randomUUID(),
-          productId: asin,
-          price: live.price,
-          bsr: live.bsr,
-        }),
+      await database.from("ProductMetric").insert({
+        id: crypto.randomUUID(),
+        productId: asin,
+        price: live.price,
+        bsr: live.bsr,
+      }),
     );
   await cacheSetJSON(key, live);
   return live;
@@ -118,7 +114,7 @@ export const getFeaturedProducts = async () => {
   if (!config.featuredAsins.length) return [];
   const rows: any[] =
     throwIfError(
-      await supabase
+      await database
         .from("Product")
         .select("canonicalData")
         .in("asin", config.featuredAsins),
@@ -132,7 +128,7 @@ export const saveDiscoveryProducts = async (raw: any[]) => {
     .map((p) => canonicalProduct(p, p.asin));
   if (results.length)
     throwIfError(
-      await supabase.from("Product").upsert(
+      await database.from("Product").upsert(
         results.map((p) => ({
           asin: p.asin,
           title: p.title,

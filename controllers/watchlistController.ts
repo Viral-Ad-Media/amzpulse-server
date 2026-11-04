@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import logger from "../lib/logger";
-import supabase, { requireData, throwIfError } from "../providers/supabase";
+import database, { requireData, throwIfError } from "../providers/database";
 import { canonicalProduct } from "../services/productService";
 import { normalizeAsin } from "../lib/validation";
 import crypto from "crypto";
@@ -10,7 +10,7 @@ export const listWatchlist = async (req: Request, res: Response) => {
 
   const items =
     throwIfError<any[]>(
-      await supabase
+      await database
         .from("WatchlistItem")
         .select("*")
         .eq("organizationId", req.user.organizationId),
@@ -20,7 +20,7 @@ export const listWatchlist = async (req: Request, res: Response) => {
   const products =
     asins.length > 0
       ? throwIfError<any[]>(
-          await supabase.from("Product").select("*").in("asin", asins),
+          await database.from("Product").select("*").in("asin", asins),
         ) || []
       : [];
   const productMap = new Map<string, any>();
@@ -74,7 +74,7 @@ export const addToWatchlist = async (req: Request, res: Response) => {
 
   try {
     const row: any = throwIfError(
-      await supabase
+      await database
         .from("Product")
         .select("canonicalData")
         .eq("asin", asin)
@@ -86,7 +86,7 @@ export const addToWatchlist = async (req: Request, res: Response) => {
         .json({ error: "Look up this product before saving it" });
     const product = row.canonicalData;
     const existing = throwIfError<any>(
-      await supabase
+      await database
         .from("WatchlistItem")
         .select("id")
         .eq("organizationId", req.user.organizationId)
@@ -96,7 +96,7 @@ export const addToWatchlist = async (req: Request, res: Response) => {
 
     const id = existing?.id || crypto.randomUUID();
     const item = requireData<any>(
-      await supabase
+      await database
         .from("WatchlistItem")
         .upsert(
           {
@@ -114,18 +114,16 @@ export const addToWatchlist = async (req: Request, res: Response) => {
         .single(),
     );
 
-    return res
-      .status(201)
-      .json({
-        asin,
-        product,
-        watchlistItem: {
-          id: item.id,
-          targetPrice: item.targetPrice,
-          targetRoi: item.targetRoi,
-          notes: item.notes,
-        },
-      });
+    return res.status(201).json({
+      asin,
+      product,
+      watchlistItem: {
+        id: item.id,
+        targetPrice: item.targetPrice,
+        targetRoi: item.targetRoi,
+        notes: item.notes,
+      },
+    });
   } catch (err) {
     logger.warn("Failed to add to watchlist", { error: err });
     return res.status(400).json({ error: "Could not add to watchlist" });
@@ -137,7 +135,7 @@ export const removeFromWatchlist = async (req: Request, res: Response) => {
   const { idOrAsin } = req.params;
 
   throwIfError(
-    await supabase
+    await database
       .from("WatchlistItem")
       .delete()
       .eq("organizationId", req.user.organizationId)
